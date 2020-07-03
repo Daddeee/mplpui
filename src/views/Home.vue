@@ -1,18 +1,30 @@
 <template>
   <div class="home">
-    <img alt="Vue logo" src="../assets/logo.png" />
-    <HelloWorld msg="Welcome to Your Vue.js App" />
+    <Scene >
+			<PointLight :position="[400, 3000, 600]"></PointLight>
+
+			<Box v-for="pack in packs"
+			  :position="getPosition(pack)"
+			  :options="getOptions(pack)"
+			  v-bind:key="pack.box.id">
+
+			  <Material :diffuse="getRandomColor()"></Material>
+			</Box>
+		</Scene>
   </div>
 </template>
 
 <script>
-// @ is an alias to /src
-import HelloWorld from "@/components/HelloWorld.vue";
+import axios from 'axios'
 
 export default {
   name: "Home",
-  components: {
-    HelloWorld
+  data () {
+  	return {
+  		colors: {},
+    	boxWithEdges: null,
+    	packs: []
+    };
   }
 };
 </script>
