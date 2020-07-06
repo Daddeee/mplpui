@@ -1,4 +1,5 @@
 import Vue from "vue";
+import "./plugins/axios";
 import vb from "vue-babylonjs";
 import App from "./App.vue";
 import router from "./router";
