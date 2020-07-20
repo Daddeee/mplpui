@@ -228,7 +228,7 @@ export default {
       externalLowestY: true,
       // complete data
       code: null,
-      impulse: null,
+      impulse: 10,
       plcNumber: 1,
       inter: []
     };
@@ -381,7 +381,7 @@ export default {
       var rotated = this.rotate(box, rotation);
       switch (rotation) {
         case "WDH":
-          rot = (center.y + Math.ceil(rotated.d / 2) >= bounds.ymax) ? 90 : -90;
+          rot = (center.y + Math.ceil(rotated.d / 2) >= bounds.ymax) ? -90 : 90;
           break;
         case "WHD":
           rot = 90;
