@@ -8,19 +8,19 @@
             <v-col>
               <v-text-field
                 v-model.number="bin.w"
-                label="Lunghezza massima pallet"
+                label="Lunghezza pallet"
               ></v-text-field>
             </v-col>
             <v-col>
               <v-text-field
                 v-model.number="bin.d"
-                label="Larghezza massima pallet"
+                label="Larghezza pallet"
               ></v-text-field>
             </v-col>
             <v-col>
               <v-text-field
                 v-model.number="bin.h"
-                label="Altezza massima pallet"
+                label="Altezza pallet"
               ></v-text-field>
             </v-col>
           </v-row>
@@ -61,6 +61,15 @@
             </v-col>
           </v-row>
           <v-row>
+            <v-col>
+              <v-text-field
+                v-model.number="maxNumberOfBoxes"
+                label="Numero massimo di scatole"
+                clearable
+              ></v-text-field>
+            </v-col>
+          </v-row>
+          <v-row>
             <v-col :cols="6" justify="center" align="center">
               <v-btn color="success" @click="solve()">
                 Calcola
@@ -85,18 +94,23 @@
         <br />
         <v-form v-if="response != null">
           <v-text-field
-            :value="response.boxesVolume / 1e9 + ' m³'"
+            :value="boxesVolume != null ? boxesVolume / 1e9 + ' m³' : null"
             label="Volume pacchi:"
             readonly
           ></v-text-field>
           <v-text-field
-            :value="response.numBoxes"
+            :value="numBoxes"
             label="Numero pacchi:"
             readonly
           ></v-text-field>
           <v-text-field
-            :value="response.fillRatio"
-            label="Rapporto volume:"
+            :value="fillRatio"
+            label="Rapporto volume totale:"
+            readonly
+          ></v-text-field>
+          <v-text-field
+            :value="cageRatio"
+            label="Rapporto volume con altezza raggiunta:"
             readonly
           ></v-text-field>
           <v-layout row justify-center>
@@ -203,7 +217,6 @@ export default {
   name: "Home",
   data() {
     return {
-      testbox: null,
       bin: PALLETS[3].value,
       box: {
         w: 100,
@@ -213,19 +226,30 @@ export default {
       },
       conf: {
         flipLayers: false,
-        verticalBoxes: true
+        verticalBoxes: true,
+        approachDistanceX: 40,
+        approachDistanceY: 40,
+        approachDistanceZ: 40,
+        approachBinVertex: "xY"
       },
-      response: null,
-      packs: [],
-      pointsLayers: {},
-      rotationsLayers: {},
+      maxNumberOfBoxes: null,
       pallets: PALLETS,
-      renderDelay: 500,
-      loading: false,
-      dialog: false,
       excludeVertical: false,
       externalLowestX: true,
       externalLowestY: true,
+
+      response: null,
+      numBoxes: null,
+      boxesVolume: null,
+      fillRatio: null,
+      cageRatio: null,
+
+      packs: [],
+      pointsLayers: {},
+      rotationsLayers: {},
+      renderDelay: 500,
+      loading: false,
+      dialog: false,
       // complete data
       code: null,
       impulse: 10,
@@ -238,19 +262,15 @@ export default {
       var name =
         this.code +
         "-" +
-        this.bin.w +
-        "x" +
-        this.bin.d +
-        "x" +
+        this.bin.id +
+        "-" +
         this.bin.h +
         "-" +
         this.response.numBoxes;
-
       var flags = "";
       if (this.conf.flipLayers) flags += "I";
       if (this.conf.verticalBoxes) flags += "V";
       if (flags.length > 0) name += "-" + flags;
-      
       return name;
     },
     layersZs() {
@@ -278,6 +298,7 @@ export default {
       return heights;
     },
     deposits() {
+      var that = this;
       var deposits = [];
 
       for (var j = 0; j < this.layersZs.length; j++) {
@@ -295,11 +316,8 @@ export default {
         };
         for (var i = 0; i < points.length; i++) {
           var isVertical = rotations[i] != "WDH" && rotations[i] != "DWH";
-          if (isVertical && this.excludeVertical)
-            continue;
+          if (isVertical && this.excludeVertical) continue;
           vertical.push(isVertical);
-
-
           var rotated = this.rotate(this.box, rotations[i]);
           centers.push({
             x: points[i].x + Math.floor(rotated.w / 2),
@@ -307,21 +325,33 @@ export default {
             z: points[i].z + Math.floor(rotated.h / 2)
           });
 
-          bounds.xmin = (bounds.xmin > points[i].x) ? points[i].x : bounds.xmin;
-          bounds.ymin = (bounds.ymin > points[i].y) ? points[i].y : bounds.ymin;
-          bounds.zmin = (bounds.zmin > points[i].z) ? points[i].z : bounds.zmin;
-          bounds.xmax = (bounds.xmax < points[i].x + rotated.w) ? points[i].x + rotated.w : bounds.xmax;
-          bounds.ymax = (bounds.ymax < points[i].y + rotated.d) ? points[i].y + rotated.d : bounds.ymax;
-          bounds.zmax = (bounds.zmax < points[i].z + rotated.h) ? points[i].z + rotated.h : bounds.zmax;
+          bounds.xmin = bounds.xmin > points[i].x ? points[i].x : bounds.xmin;
+          bounds.ymin = bounds.ymin > points[i].y ? points[i].y : bounds.ymin;
+          bounds.zmin = bounds.zmin > points[i].z ? points[i].z : bounds.zmin;
+          bounds.xmax =
+            bounds.xmax < points[i].x + rotated.w
+              ? points[i].x + rotated.w
+              : bounds.xmax;
+          bounds.ymax =
+            bounds.ymax < points[i].y + rotated.d
+              ? points[i].y + rotated.d
+              : bounds.ymax;
+          bounds.zmax =
+            bounds.zmax < points[i].z + rotated.h
+              ? points[i].z + rotated.h
+              : bounds.zmax;
         }
 
         // argsort with dsu
         var sortedIdxs = centers
           .map((c, index) => [c, index])
           .sort((arr1, arr2) => {
-            var d1 = arr1[0].x*arr1[0].x + arr1[0].y*arr1[0].y;
-            var d2 = arr2[0].x*arr2[0].x + arr2[0].y*arr2[0].y; 
-            return d1 - d2;
+            var dx1 = that.bin.w - arr1[0].x,
+              dx2 = that.bin.w - arr2[0].x;
+            var dy1 = arr1[0].y, dy2 = arr2[0].y;
+            var d1 = dx1 * dx1 + dy1 * dy1;
+            var d2 = dx2 * dx2 + dy2 * dy2;
+            return d2 - d1;
           })
           .map(arr => arr[1]);
 
@@ -336,11 +366,11 @@ export default {
               this.box,
               rotations[idx]
             ),
-            QUOTA_Z: vertical[idx] ? 2*centers[idx].z : centers[idx].z,
+            QUOTA_Z: vertical[idx] ? 2 * centers[idx].z : centers[idx].z,
             ACC_XP: true,
             ACC_XN: false,
-            ACC_YP: true,
-            ACC_YN: false,
+            ACC_YP: false,
+            ACC_YN: true,
             ACC_ZP: false,
             CAMBIO_STRATO: i == sortedIdxs.length - 1,
             SCARICO_DA_ALTO: false,
@@ -381,13 +411,13 @@ export default {
       var rotated = this.rotate(box, rotation);
       switch (rotation) {
         case "WDH":
-          rot = (center.y + Math.ceil(rotated.d / 2) >= bounds.ymax) ? -90 : 90;
+          rot = center.y - Math.ceil(rotated.d / 2) <= bounds.ymin ? 270 : 90;
           break;
         case "WHD":
           rot = 90;
           break;
         case "DWH":
-          rot = (center.x + Math.ceil(rotated.w / 2) >= bounds.xmax) ? 180 : 0;
+          rot = center.x + Math.ceil(rotated.w / 2) >= bounds.xmax ? 180 : 0;
           break;
         case "DHW":
           rot = 90;
@@ -433,15 +463,53 @@ export default {
       }
       return res;
     },
+    getNumBoxes (response) {
+      return this.maxNumberOfBoxes != null 
+        ? Math.min(this.maxNumberOfBoxes, response.numBoxes)
+        : response.numBoxes;
+    },
+    getBoxesVolume(numBoxes) {
+      var vol = this.box.w * this.box.d * this.box.h;
+      return vol * numBoxes;
+    },
+    getFillRatio(boxesVolume) {
+      var binVolume = this.bin.w * this.bin.d * this.bin.h;
+      return (boxesVolume / binVolume).toFixed(3);
+    },
+    getCageRatio(boxesVolume, box, points, rotations) {
+      var maxZ = 0;
+      for (let i = 0; i < points.length; i++) {
+        var point = points[i];
+        var rotation = rotations[i];
+        var rotatedBox = this.rotate(box, rotation);
+        var z = point.z + rotatedBox.h;
+        maxZ = Math.max(maxZ, z);
+      }
+      var binVolume = this.bin.w * this.bin.d * maxZ;
+      return (boxesVolume / binVolume).toFixed(3);
+    },
     solve() {
       let that = this;
       this.loading = true;
       SolverService.solve(this.bin, this.box, this.conf).then(response => {
         that.loading = false;
         that.response = response;
+        that.numBoxes = that.getNumBoxes(response);
+        that.boxesVolume = that.getBoxesVolume(that.numBoxes);
+        that.fillRatio = that.getFillRatio(that.boxesVolume);
+        that.cageRatio = that.getCageRatio(that.boxesVolume, that.box, response.points, response.rotations);
+
         that.packs = [];
         var pointsLayers = {};
         var rotationsLayers = {};
+
+        var maxBoxes = parseInt(that.maxNumberOfBoxes);
+        var limit = response.points.length;
+        if (!isNaN(maxBoxes)) {
+          that.response.numBoxes = Math.min(that.response.numBoxes, maxBoxes);
+          limit = Math.min(response.points.length, maxBoxes);
+        }
+
         for (let i = 0; i < response.points.length; i++) {
           let p = response.points[i];
           if (pointsLayers[p.z] == null) {
@@ -450,6 +518,33 @@ export default {
           }
           pointsLayers[p.z].push(response.points[i]);
           rotationsLayers[p.z].push(response.rotations[i]);
+        }
+
+        var layersZs = Object.keys(pointsLayers)
+          .map(i => parseInt(i))
+          .sort((a, b) => a - b);
+
+        var k = layersZs.length - 1;
+        var excess = response.points.length - limit;
+
+        while (excess > 0 && k >= 0) {
+          var z = layersZs[k];
+          if (pointsLayers[z].length > excess) {
+            pointsLayers[z] = pointsLayers[z].slice(
+              0,
+              pointsLayers[z].length - excess
+            );
+            rotationsLayers[z] = rotationsLayers[z].slice(
+              0,
+              rotationsLayers[z].length - excess
+            );
+            excess = 0;
+          } else {
+            excess -= pointsLayers[z].length;
+            delete pointsLayers[z];
+            delete rotationsLayers[z];
+          }
+          k--;
         }
 
         that.pointsLayers = pointsLayers;
@@ -509,16 +604,16 @@ export default {
 
       return {
         NOME_PRG: this.programName,
+        TIPO_PALLET: this.bin.number,
         IMP_CENT_RIB: this.impulse,
-        PLC_NUMBER: 1,
         QUOTA_X_PRESA: 0,
         QUOTA_Y_PRESA: Math.floor(-this.box.w / 2),
         QUOTA_Z_PRESA: this.box.h,
         QUOTA_Z_PRESA_VERTICALE: this.box.d,
         QUOTA_W_PRESA: 0,
-        K_ACC_X: 40,
-        K_ACC_Y: 40,
-        K_ACC_Z: 40,
+        K_ACC_X: this.conf.accX,
+        K_ACC_Y: this.conf.accY,
+        K_ACC_Z: this.conf.accZ,
         NUM_STRATI: this.numLayers,
         QUOTA_X_D_INTER: 0,
         QUOTA_Y_D_INTER: 0,
@@ -529,6 +624,11 @@ export default {
       };
     },
     download() {
+      if (this.code == null) {
+        alert("È necessario specificare il codice imballo");
+        return;
+      }
+
       this.dialog = false;
       var data = JSON.stringify(this.getProgramJson());
       var blob = new Blob([data], { type: "text/plain" });
