@@ -274,7 +274,10 @@ export default {
       return name;
     },
     layersZs() {
+      var that = this;
       return Object.keys(this.pointsLayers)
+        // filter layer with only vertical boxes
+        .filter(z => that.rotationsLayers[z].some(rot => rot != "WHD" && rot != "HWD"))
         .map(i => parseInt(i))
         .sort((a, b) => a - b);
     },
@@ -298,87 +301,90 @@ export default {
       return heights;
     },
     deposits() {
-      var that = this;
       var deposits = [];
+      var points = this.response.points;
+      var rotations = this.response.rotations;
+      var approachesX = this.response.positioning.approachesX;
+      var approachesY = this.response.positioning.approachesY;
+      var centers = [];
+      var vertical = [];
+      var bounds = {
+        xmin: this.bin.w,
+        xmax: 0,
+        ymin: this.bin.d,
+        ymax: 0,
+        zmin: this.bin.h,
+        zmax: 0
+      };
 
-      for (var j = 0; j < this.layersZs.length; j++) {
-        var points = this.pointsLayers[this.layersZs[j]];
-        var rotations = this.rotationsLayers[this.layersZs[j]];
-        var centers = [];
-        var vertical = [];
-        var bounds = {
-          xmin: this.bin.w,
-          xmax: 0,
-          ymin: this.bin.d,
-          ymax: 0,
-          zmin: this.bin.h,
-          zmax: 0
-        };
-        for (var i = 0; i < points.length; i++) {
-          var isVertical = rotations[i] != "WDH" && rotations[i] != "DWH";
-          if (isVertical && this.excludeVertical) continue;
-          vertical.push(isVertical);
-          var rotated = this.rotate(this.box, rotations[i]);
-          centers.push({
-            x: points[i].x + Math.floor(rotated.w / 2),
-            y: points[i].y + Math.floor(rotated.d / 2),
-            z: points[i].z + Math.floor(rotated.h / 2)
-          });
+      for (var i = 0; i < points.length; i++) {
+        var rotated = this.rotate(this.box, rotations[i]);
+        centers.push({
+          x: points[i].x + Math.floor(rotated.w / 2),
+          y: points[i].y + Math.floor(rotated.d / 2),
+          z: points[i].z + Math.floor(rotated.h / 2)
+        });
 
-          bounds.xmin = bounds.xmin > points[i].x ? points[i].x : bounds.xmin;
-          bounds.ymin = bounds.ymin > points[i].y ? points[i].y : bounds.ymin;
-          bounds.zmin = bounds.zmin > points[i].z ? points[i].z : bounds.zmin;
-          bounds.xmax =
-            bounds.xmax < points[i].x + rotated.w
-              ? points[i].x + rotated.w
-              : bounds.xmax;
-          bounds.ymax =
-            bounds.ymax < points[i].y + rotated.d
-              ? points[i].y + rotated.d
-              : bounds.ymax;
-          bounds.zmax =
-            bounds.zmax < points[i].z + rotated.h
-              ? points[i].z + rotated.h
-              : bounds.zmax;
-        }
+        var isVertical = rotations[i] != "WDH" && rotations[i] != "DWH";
+        vertical.push(isVertical);
+        if (isVertical && this.excludeVertical) continue;
 
-        // argsort with dsu
-        var sortedIdxs = centers
-          .map((c, index) => [c, index])
-          .sort((arr1, arr2) => {
-            var dx1 = that.bin.w - arr1[0].x,
-              dx2 = that.bin.w - arr2[0].x;
-            var dy1 = arr1[0].y, dy2 = arr2[0].y;
-            var d1 = dx1 * dx1 + dy1 * dy1;
-            var d2 = dx2 * dx2 + dy2 * dy2;
-            return d2 - d1;
-          })
-          .map(arr => arr[1]);
-
-        for (i = 0; i < sortedIdxs.length; i++) {
-          var idx = sortedIdxs[i];
-          deposits.push({
-            QUOTA_X: centers[idx].x,
-            QUOTA_Y: centers[idx].y,
-            QUOTA_W: this.getRotationInDegrees(
-              bounds,
-              centers[idx],
-              this.box,
-              rotations[idx]
-            ),
-            QUOTA_Z: vertical[idx] ? 2 * centers[idx].z : centers[idx].z,
-            ACC_XP: true,
-            ACC_XN: false,
-            ACC_YP: false,
-            ACC_YN: true,
-            ACC_ZP: false,
-            CAMBIO_STRATO: i == sortedIdxs.length - 1,
-            SCARICO_DA_ALTO: false,
-            TEST_ALTEZZA_SCARICO: false,
-            SCATOLA_VERTICALE: vertical[idx]
-          });
-        }
+        bounds.xmin = bounds.xmin > points[i].x ? points[i].x : bounds.xmin;
+        bounds.ymin = bounds.ymin > points[i].y ? points[i].y : bounds.ymin;
+        bounds.zmin = bounds.zmin > points[i].z ? points[i].z : bounds.zmin;
+        bounds.xmax =
+          bounds.xmax < points[i].x + rotated.w
+            ? points[i].x + rotated.w
+            : bounds.xmax;
+        bounds.ymax =
+          bounds.ymax < points[i].y + rotated.d
+            ? points[i].y + rotated.d
+            : bounds.ymax;
+        bounds.zmax =
+          bounds.zmax < points[i].z + rotated.h
+            ? points[i].z + rotated.h
+            : bounds.zmax;
       }
+
+      for (var idx = 0; idx < centers.length; idx++) {
+        if (vertical[idx] && this.excludeVertical) continue;
+
+        var changeLayer = false; 
+        if (!vertical[idx]) {
+          if (idx + 1 < centers.length) {
+            changeLayer = centers[idx].z != centers[idx + 1].z;
+          } else {
+            changeLayer = true;
+          }
+        }
+
+        var ACC_XP = approachesX[idx] == "X";
+        var ACC_XN = approachesX[idx] == "x";
+        var ACC_YP = approachesY[idx] == "Y";
+        var ACC_YN = approachesY[idx] == "y";
+
+        deposits.push({
+          QUOTA_X: centers[idx].x,
+          QUOTA_Y: centers[idx].y,
+          QUOTA_W: this.getRotationInDegrees(
+            bounds,
+            centers[idx],
+            this.box,
+            rotations[idx]
+          ),
+          QUOTA_Z: vertical[idx] ? 2 * centers[idx].z : centers[idx].z,
+          ACC_XP: ACC_XP,
+          ACC_XN: ACC_XN,
+          ACC_YP: ACC_YP,
+          ACC_YN: ACC_YN,
+          ACC_ZP: false,
+          CAMBIO_STRATO: changeLayer,
+          SCARICO_DA_ALTO: false,
+          TEST_ALTEZZA_SCARICO: false,
+          SCATOLA_VERTICALE: vertical[idx]
+        });
+      }
+      
       return deposits;
     }
   },
@@ -493,6 +499,17 @@ export default {
       this.loading = true;
       SolverService.solve(this.bin, this.box, this.conf).then(response => {
         that.loading = false;
+
+        var maxBoxes = parseInt(that.maxNumberOfBoxes);
+        var limit = response.points.length;
+        if (!isNaN(maxBoxes)) {
+          response.numBoxes = Math.min(response.numBoxes, maxBoxes);
+          limit = Math.min(response.points.length, maxBoxes);
+        }
+        response.points = response.points.slice(0, limit);
+        response.rotations = response.rotations.slice(0, limit);
+
+
         that.response = response;
         that.numBoxes = that.getNumBoxes(response);
         that.boxesVolume = that.getBoxesVolume(that.numBoxes);
@@ -502,13 +519,6 @@ export default {
         that.packs = [];
         var pointsLayers = {};
         var rotationsLayers = {};
-
-        var maxBoxes = parseInt(that.maxNumberOfBoxes);
-        var limit = response.points.length;
-        if (!isNaN(maxBoxes)) {
-          that.response.numBoxes = Math.min(that.response.numBoxes, maxBoxes);
-          limit = Math.min(response.points.length, maxBoxes);
-        }
 
         for (let i = 0; i < response.points.length; i++) {
           let p = response.points[i];
@@ -520,37 +530,12 @@ export default {
           rotationsLayers[p.z].push(response.rotations[i]);
         }
 
-        var layersZs = Object.keys(pointsLayers)
-          .map(i => parseInt(i))
-          .sort((a, b) => a - b);
-
-        var k = layersZs.length - 1;
-        var excess = response.points.length - limit;
-
-        while (excess > 0 && k >= 0) {
-          var z = layersZs[k];
-          if (pointsLayers[z].length > excess) {
-            pointsLayers[z] = pointsLayers[z].slice(
-              0,
-              pointsLayers[z].length - excess
-            );
-            rotationsLayers[z] = rotationsLayers[z].slice(
-              0,
-              rotationsLayers[z].length - excess
-            );
-            excess = 0;
-          } else {
-            excess -= pointsLayers[z].length;
-            delete pointsLayers[z];
-            delete rotationsLayers[z];
-          }
-          k--;
-        }
-
         that.pointsLayers = pointsLayers;
         that.rotationsLayers = rotationsLayers;
 
-        let layers = that.layersZs;
+        let layers = Object.keys(that.pointsLayers)
+          .map(i => parseInt(i))
+          .sort((a, b) => a - b);
         for (let j = 0; j < layers.length; j++) {
           let k = layers[j];
           setTimeout(
@@ -602,6 +587,8 @@ export default {
         boolInter[i - 1] = 1;
       });
 
+      this.inter = [];
+
       return {
         NOME_PRG: this.programName,
         TIPO_PALLET: this.bin.number,
@@ -611,9 +598,9 @@ export default {
         QUOTA_Z_PRESA: this.box.h,
         QUOTA_Z_PRESA_VERTICALE: this.box.d,
         QUOTA_W_PRESA: 0,
-        K_ACC_X: this.conf.accX,
-        K_ACC_Y: this.conf.accY,
-        K_ACC_Z: this.conf.accZ,
+        K_ACC_X: this.conf.approachDistanceX,
+        K_ACC_Y: this.conf.approachDistanceY,
+        K_ACC_Z: this.conf.approachDistanceZ,
         NUM_STRATI: this.numLayers,
         QUOTA_X_D_INTER: 0,
         QUOTA_Y_D_INTER: 0,
@@ -628,7 +615,6 @@ export default {
         alert("È necessario specificare il codice imballo");
         return;
       }
-
       this.dialog = false;
       var data = JSON.stringify(this.getProgramJson());
       var blob = new Blob([data], { type: "text/plain" });
