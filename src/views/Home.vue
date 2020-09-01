@@ -8,13 +8,13 @@
             <v-col>
               <v-text-field
                 v-model.number="bin.w"
-                label="Lunghezza pallet"
+                label="Larghezza pallet"
               ></v-text-field>
             </v-col>
             <v-col>
               <v-text-field
                 v-model.number="bin.d"
-                label="Larghezza pallet"
+                label="Lunghezza pallet"
               ></v-text-field>
             </v-col>
             <v-col>
@@ -28,13 +28,13 @@
             <v-col>
               <v-text-field
                 v-model.number="box.w"
-                label="Lunghezza pacco"
+                label="Larghezza pacco"
               ></v-text-field>
             </v-col>
             <v-col>
               <v-text-field
                 v-model.number="box.d"
-                label="Larghezza pacco"
+                label="Lunghezza pacco"
               ></v-text-field>
             </v-col>
             <v-col>
@@ -57,6 +57,15 @@
                 v-model="conf.verticalBoxes"
                 class="mx-2"
                 label="Scatole verticali"
+              ></v-checkbox>
+            </v-col>
+          </v-row>
+          <v-row>
+            <v-col>
+              <v-checkbox
+                v-model="conf.enableAllVerticalizations"
+                class="mx-2"
+                label="Abilita tutte le verticalizzazioni"
               ></v-checkbox>
             </v-col>
           </v-row>
@@ -225,8 +234,9 @@ export default {
         id: "box"
       },
       conf: {
-        flipLayers: false,
+        flipLayers: true,
         verticalBoxes: true,
+        enableAllVerticalizations: false,
         approachDistanceX: 40,
         approachDistanceY: 40,
         approachDistanceZ: 40,
@@ -276,8 +286,7 @@ export default {
     layersZs() {
       var that = this;
       return Object.keys(this.pointsLayers)
-        // filter layer with only vertical boxes
-        .filter(z => that.rotationsLayers[z].some(rot => rot != "WHD" && rot != "HWD"))
+        .filter(z => that.rotationsLayers[z].some(rot => rot != "WHD" && rot != "HWD" && rot != "HDW" && rot != "DHW"))
         .map(i => parseInt(i))
         .sort((a, b) => a - b);
     },
@@ -325,9 +334,15 @@ export default {
           z: points[i].z + Math.floor(rotated.h / 2)
         });
 
+        // always skip boxes with this rotation because palletizer can't handle them
+
         var isVertical = rotations[i] != "WDH" && rotations[i] != "DWH";
         vertical.push(isVertical);
-        if (isVertical && this.excludeVertical) continue;
+
+        var forbiddenRotation = rotations[i] == "HDW" || rotations[i] == "DHW";
+        var forbiddenVertical = isVertical && this.excludeVertical;
+
+        if (forbiddenVertical || forbiddenRotation) continue;
 
         bounds.xmin = bounds.xmin > points[i].x ? points[i].x : bounds.xmin;
         bounds.ymin = bounds.ymin > points[i].y ? points[i].y : bounds.ymin;
@@ -347,7 +362,9 @@ export default {
       }
 
       for (var idx = 0; idx < centers.length; idx++) {
-        if (vertical[idx] && this.excludeVertical) continue;
+        var forbiddenRot = rotations[idx] == "HDW" || rotations[idx] == "DHW";
+        var forbiddenVert = vertical[idx] && this.excludeVertical;
+        if (forbiddenVert || forbiddenRot) continue;
 
         var changeLayer = false; 
         if (!vertical[idx]) {
@@ -396,7 +413,7 @@ export default {
     },
     rotate(box, rotation) {
       switch (rotation) {
-        case "WDH":
+        case "WDH": 
           return { w: box.w, d: box.d, h: box.h, id: box.id };
         case "WHD":
           return { w: box.w, d: box.h, h: box.d, id: box.id };
