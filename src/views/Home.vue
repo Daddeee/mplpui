@@ -28,13 +28,13 @@
             <v-col>
               <v-text-field
                 v-model.number="box.w"
-                label="Larghezza pacco"
+                label="Lunghezza pacco"
               ></v-text-field>
             </v-col>
             <v-col>
               <v-text-field
                 v-model.number="box.d"
-                label="Lunghezza pacco"
+                label="Larghezza pacco"
               ></v-text-field>
             </v-col>
             <v-col>
