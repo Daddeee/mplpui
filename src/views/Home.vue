@@ -604,6 +604,11 @@ export default {
         boolInter[i - 1] = 1;
       });
 
+      for (var i=0; i<boolInter.length; i++) {
+        if (boolInter[i] == null)
+          boolInter[i] = 0;
+      }
+
       this.inter = [];
 
       return {
