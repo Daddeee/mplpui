@@ -262,10 +262,18 @@ export default {
       dialog: false,
       // complete data
       code: null,
-      impulse: 10,
+      impulse: 7,
       plcNumber: 1,
       inter: []
     };
+  },
+  watch: {
+    box: {
+      handler (newBox) {
+        this.impulse = Math.round(newBox.w / (2 * 7.37))
+      },
+      deep: true
+    }
   },
   computed: {
     programName() {
