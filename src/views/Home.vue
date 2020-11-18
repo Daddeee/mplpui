@@ -446,10 +446,10 @@ export default {
           rot = 90;
           break;
         case "HWD":
-          rot = 90;
+          rot = 0;
           break;
         case "HDW":
-          rot = 0;
+          rot = 90;
           break;
         default:
           return null;
