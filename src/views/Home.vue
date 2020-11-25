@@ -3,7 +3,7 @@
     <v-row>
       <v-col :cols="3">
         <v-form>
-          <v-select label="Pallet" v-model="bin" :items="pallets"></v-select>
+          <v-select label="Pallet" v-model="selectedBin" :items="pallets"></v-select>
           <v-row>
             <v-col>
               <v-text-field
@@ -226,7 +226,8 @@ export default {
   name: "Home",
   data() {
     return {
-      bin: PALLETS[3].value,
+      selectedBin: PALLETS[3].value,
+      bin: JSON.parse(JSON.stringify(PALLETS[3].value)),
       box: {
         w: 100,
         d: 100,
@@ -271,6 +272,15 @@ export default {
     box: {
       handler (newBox) {
         this.impulse = Math.round(newBox.w / (2 * 7.37))
+      },
+      deep: true
+    },
+    selectedBin(newSelectedBin) {
+      this.bin = JSON.parse(JSON.stringify(newSelectedBin));
+    },
+    bin: {
+      handler (newBin) {
+        newBin.id = newBin.w + "x" + newBin.d;
       },
       deep: true
     }
