@@ -335,6 +335,7 @@ export default {
       var approachesY = this.response.positioning.approachesY;
       var centers = [];
       var vertical = [];
+      var heights = [];
       var bounds = {
         xmin: this.bin.w,
         xmax: 0,
@@ -343,6 +344,7 @@ export default {
         zmin: this.bin.h,
         zmax: 0
       };
+      var lastHorizontal = 0;
 
       for (var i = 0; i < points.length; i++) {
         var rotated = this.rotate(this.box, rotations[i]);
@@ -351,6 +353,8 @@ export default {
           y: points[i].y + Math.floor(rotated.d / 2),
           z: points[i].z + Math.floor(rotated.h / 2)
         });
+
+        heights.push(points[i].z + rotated.h);
 
         // always skip boxes with this rotation because palletizer can't handle them
 
@@ -361,6 +365,8 @@ export default {
         var forbiddenVertical = isVertical && this.excludeVertical;
 
         if (forbiddenVertical || forbiddenRotation) continue;
+
+        if (!isVertical) lastHorizontal = i;
 
         bounds.xmin = bounds.xmin > points[i].x ? points[i].x : bounds.xmin;
         bounds.ymin = bounds.ymin > points[i].y ? points[i].y : bounds.ymin;
@@ -384,9 +390,17 @@ export default {
         var forbiddenVert = vertical[idx] && this.excludeVertical;
         if (forbiddenVert || forbiddenRot) continue;
 
-        var changeLayer = false; 
-        if (!vertical[idx]) {
-          if (idx + 1 < centers.length) {
+        var changeLayer; 
+        if (vertical[idx]) {
+          if (idx + 1 >= centers.length) {
+            changeLayer = true;
+          } else {
+            changeLayer = false;
+          }
+        } else {
+          if (idx == lastHorizontal && vertical[centers.length - 1]) {
+            changeLayer = false;
+          } else if (idx + 1 < centers.length) {
             changeLayer = centers[idx].z != centers[idx + 1].z;
           } else {
             changeLayer = true;
@@ -407,7 +421,7 @@ export default {
             this.box,
             rotations[idx]
           ),
-          QUOTA_Z: vertical[idx] ? 2 * centers[idx].z : centers[idx].z,
+          QUOTA_Z: vertical[idx] ? heights[idx] : centers[idx].z,
           ACC_XP: ACC_XP,
           ACC_XN: ACC_XN,
           ACC_YP: ACC_YP,
@@ -450,6 +464,7 @@ export default {
     getRotationInDegrees(bounds, center, box, rotation) {
       var rot = 0;
       var rotated = this.rotate(box, rotation);
+      debugger;
       switch (rotation) {
         case "WDH":
           rot = center.y - Math.ceil(rotated.d / 2) <= bounds.ymin ? 270 : 90;
